@@ -3,50 +3,86 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-white text-black">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
         <header className="mb-8 text-center">
-          <h1 className="text-3xl font-bold mb-2">Station Assignment Scheduler</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Create fair station schedules with minimal effort
+          <h1 className="text-3xl font-bold mb-2">SpiZwiBu Generator</h1>
+          <p className="text-gray-600">
+            Einfache SpiZwiBu Verteilung
           </p>
         </header>
         
         {/* Main content */}
         <main className="space-y-8">
           {/* App description */}
-          <section className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-            <h2 className="text-xl font-semibold mb-4">Create Fair Schedules</h2>
-            <p className="mb-4">
-              This application helps you distribute personnel across multiple station locations throughout a weekly schedule,
-              respecting individual availability and ensuring fair distribution.
+          <section className="bg-white border border-gray-200 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Faire SpiZwiBu Pläne erstellen</h2>
+            <p className="mb-4 text-gray-700">
+              Diese Anwendung hilft dir dabei, Mitarbeiter fair auf mehrere SpiZwiBu Stationen über einen wöchentlichen 
+              Dienstplan zu verteilen, unter Berücksichtigung individueller Verfügbarkeiten. 
+              <strong>Jede Station wird mit 2 Personen pro Zeitslot besetzt.</strong>
             </p>
             
             {/* Workflow steps */}
             <div className="mt-6">
-              <h3 className="text-lg font-medium mb-3">Simple workflow:</h3>
-              <ol className="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
-                <li>Import personnel names</li>
-                <li>Configure stations</li>
-                <li>Generate balanced schedule</li>
-                <li>Make any manual adjustments</li>
-                <li>Export to CSV</li>
+              <h3 className="text-lg font-medium mb-3">Einfacher Arbeitsablauf:</h3>
+              <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                <li>Namen von Personen importieren</li>
+                <li>Stationen konfigurieren</li>
+                <li>Ausgewogenen Plan generieren</li>
+                <li>Manuelle Anpassungen vornehmen</li>
+                <li>Als CSV-Datei exportieren</li>
               </ol>
             </div>
           </section>
           
-          {/* Get started button */}
+          {/* Get started section */}
           <div className="text-center mt-8">
             <Link 
               href="/import"
-              className="px-6 py-3 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-full font-medium hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+              className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors inline-block"
             >
-              New Session
+              Neue Sitzung starten
             </Link>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">
-              All data stays in your browser and is cleared when you close the tab
+            <p className="text-sm text-gray-500 mt-3">
+              Alle Daten bleiben in Ihrem Browser und werden beim Schließen des Tabs gelöscht
             </p>
+          </div>
+
+          {/* Quick access section */}
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link
+              href="/import"
+              className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+            >
+              <h3 className="font-medium mb-2">1. Import</h3>
+              <p className="text-sm text-gray-600">Namen manuell eingeben oder CSV-Datei hochladen</p>
+            </Link>
+            
+            <Link
+              href="/configuration"
+              className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+            >
+              <h3 className="font-medium mb-2">2. Konfiguration</h3>
+              <p className="text-sm text-gray-600">Stationen verwalten und konfigurieren</p>
+            </Link>
+            
+            <Link
+              href="/schedule"
+              className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+            >
+              <h3 className="font-medium mb-2">3. Generierung</h3>
+              <p className="text-sm text-gray-600">Fairen Dienstplan automatisch erstellen</p>
+            </Link>
+            
+            <Link
+              href="/display"
+              className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+            >
+              <h3 className="font-medium mb-2">4. Export</h3>
+              <p className="text-sm text-gray-600">Dienstplan anzeigen und als CSV exportieren</p>
+            </Link>
           </div>
         </main>
         

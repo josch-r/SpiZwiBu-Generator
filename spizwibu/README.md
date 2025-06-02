@@ -1,24 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Station Assignment Scheduler
 
-## Getting Started
+A Next.js application for fair distribution of personnel across multiple station locations throughout a weekly schedule (Monday evening through Saturday evening).
 
-First, run the development server:
+## Features
+
+✅ **German CSV Import** - Import personnel data with German CSV format (Vorname;Nachname)  
+✅ **Station Management** - Configure 1-10 stations with CRUD operations  
+✅ **2-Person Staffing** - Each station requires exactly 2 persons per time slot  
+✅ **Fair Scheduling** - Constraint-based algorithm ensuring ±1 assignment per person  
+✅ **Multiple Views** - Calendar, person, and station-based schedule displays  
+✅ **CSV Export** - German format export with GDPR-compliant data cleanup  
+✅ **Privacy Compliant** - Session-only storage, automatic cleanup  
+✅ **German Localization** - Full German interface with responsive design  
+
+## Quick Start
 
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to start the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Workflow
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Import** (`/import`) - Add personnel via CSV upload or manual entry
+2. **Configure** (`/configuration`) - Set up station locations and constraints  
+3. **Generate** (`/schedule`) - Create fair schedule using constraint-based algorithm
+4. **Display** (`/display`) - View schedule in multiple formats (calendar/person/station)
+5. **Export** - Download German CSV with automatic data cleanup
+
+## Technical Details
+
+- **Framework**: Next.js 15.3.2 with TypeScript
+- **Styling**: Tailwind CSS with shadcn/ui components
+- **Storage**: Session-only (GDPR compliant)
+- **Algorithm**: Fair distribution with constraint handling (2 persons per station)
+- **Format**: German CSV support (semicolon separators)
+
+## Privacy & Compliance
+
+- All data stored in browser session only
+- Automatic cleanup on tab close or export
+- No server-side data storage
+- GDPR-compliant privacy notices
+
+---
+
+*Production-ready build - All SRS requirements implemented*
 
 ## Learn More
 
