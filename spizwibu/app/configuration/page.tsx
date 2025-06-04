@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Station, ScheduleConfig, Person } from '@/lib/types/person';
 import { sessionStorageUtils } from '@/lib/utils/storage';
-import { AlertCircle, Plus, Trash2, Settings, Calendar, Users, CalendarDays } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Settings, Calendar, Users } from 'lucide-react';
 
 export default function ConfigurationPage() {
   const router = useRouter();
@@ -22,10 +22,10 @@ export default function ConfigurationPage() {
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(null);
   const [persons, setPersons] = useState<Person[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
-  const [availabilityMode, setAvailabilityMode] = useState<'available' | 'unavailable'>('unavailable');
-  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [availabilityMode, setAvailabilityMode] = useState<'available' | 'unavailable'>('unavailable');  const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [tempStartDate, setTempStartDate] = useState('');
   const [tempEndDate, setTempEndDate] = useState('');
+  const [tempSingleDate, setTempSingleDate] = useState('');
   useEffect(() => {
     if (!sessionStorageUtils.isSessionStorageAvailable()) {
       setError('Session storage is not available. Please enable it to use this application.');
@@ -153,7 +153,6 @@ export default function ConfigurationPage() {
     
     return dates;
   };
-
   const handleAddDateRange = () => {
     if (!selectedPersonId || !tempStartDate || !tempEndDate) {
       setError('Bitte wählen Sie eine Person und geben Sie Start- und Enddatum ein.');
@@ -165,6 +164,19 @@ export default function ConfigurationPage() {
       return;
     }
 
+    // Check if date range is within schedule range
+    if (scheduleConfig) {
+      const rangeStart = new Date(tempStartDate);
+      const rangeEnd = new Date(tempEndDate);
+      const scheduleStart = new Date(scheduleConfig.startDate);
+      const scheduleEnd = new Date(scheduleConfig.endDate);
+      
+      if (rangeStart < scheduleStart || rangeEnd > scheduleEnd) {
+        setError(`Der Zeitraum muss zwischen ${new Date(scheduleConfig.startDate).toLocaleDateString('de-DE')} und ${new Date(scheduleConfig.endDate).toLocaleDateString('de-DE')} liegen.`);
+        return;
+      }
+    }
+
     const dateRange = generateDateRange(tempStartDate, tempEndDate);
     const newDates = [...selectedDates, ...dateRange];
     const uniqueDates = [...new Set(newDates)].sort();
@@ -173,14 +185,30 @@ export default function ConfigurationPage() {
     setTempStartDate('');
     setTempEndDate('');
     setError(null);
-  };
-
-  const handleAddSingleDate = (date: string) => {
-    if (!date) return;
+  };  const handleAddSingleDate = () => {
+    const date = tempSingleDate;
+    if (!date) {
+      setError('Bitte wählen Sie ein Datum aus.');
+      return;
+    }
+    
+    // Check if date is within schedule range
+    if (scheduleConfig) {
+      const selectedDate = new Date(date);
+      const startDate = new Date(scheduleConfig.startDate);
+      const endDate = new Date(scheduleConfig.endDate);
+      
+      if (selectedDate < startDate || selectedDate > endDate) {
+        setError(`Das Datum muss zwischen ${new Date(scheduleConfig.startDate).toLocaleDateString('de-DE')} und ${new Date(scheduleConfig.endDate).toLocaleDateString('de-DE')} liegen.`);
+        return;
+      }
+    }
     
     const newDates = [...selectedDates, date];
     const uniqueDates = [...new Set(newDates)].sort();
     setSelectedDates(uniqueDates);
+    setTempSingleDate('');
+    setError(null);
   };
 
   const handleRemoveDate = (dateToRemove: string) => {
@@ -214,16 +242,16 @@ export default function ConfigurationPage() {
 
     setPersons(updatedPersons);
     sessionStorageUtils.savePersons(updatedPersons);
-    
-    // Reset form
+      // Reset form
     setSelectedDates([]);
     setSelectedPersonId('');
+    setTempSingleDate('');
     setError(null);
   };
-
   const handlePersonSelectionChange = (personId: string) => {
     setSelectedPersonId(personId);
     setSelectedDates([]);
+    setTempSingleDate('');
     
     if (personId) {
       const person = persons.find(p => p.id === personId);
@@ -250,11 +278,10 @@ export default function ConfigurationPage() {
         return updatedPerson;
       }
       return person;
-    });
-
-    setPersons(updatedPersons);
+    });    setPersons(updatedPersons);
     sessionStorageUtils.savePersons(updatedPersons);
     setSelectedDates([]);
+    setTempSingleDate('');
     setError(null);
   };
 
@@ -531,9 +558,13 @@ export default function ConfigurationPage() {
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
               Personenverfügbarkeit
-            </CardTitle>
-            <CardDescription>
+            </CardTitle>            <CardDescription>
               Verwalten Sie die Verfügbarkeit einzelner Personen für bestimmte Termine.
+              {scheduleConfig && (
+                <span className="block mt-1 text-sm">
+                  Verfügbare Termine: {new Date(scheduleConfig.startDate).toLocaleDateString('de-DE')} bis {new Date(scheduleConfig.endDate).toLocaleDateString('de-DE')}
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -596,14 +627,15 @@ export default function ConfigurationPage() {
                   {/* Date Range Selection */}
                   <div className="space-y-4">
                     <Label>Zeitraum hinzufügen</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">                      <div>
                         <Label htmlFor="temp-start-date" className="text-sm">Von</Label>
                         <Input
                           id="temp-start-date"
                           type="date"
                           value={tempStartDate}
                           onChange={(e) => setTempStartDate(e.target.value)}
+                          min={scheduleConfig?.startDate}
+                          max={scheduleConfig?.endDate}
                         />
                       </div>
                       <div>
@@ -613,6 +645,8 @@ export default function ConfigurationPage() {
                           type="date"
                           value={tempEndDate}
                           onChange={(e) => setTempEndDate(e.target.value)}
+                          min={scheduleConfig?.startDate}
+                          max={scheduleConfig?.endDate}
                         />
                       </div>
                       <div className="flex items-end">
@@ -626,18 +660,29 @@ export default function ConfigurationPage() {
                         </Button>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Single Date Selection */}
+                  </div>                  {/* Single Date Selection */}
                   <div className="space-y-4">
                     <Label>Einzelnen Tag hinzufügen</Label>
                     <div className="flex gap-4">
                       <div className="flex-1">
                         <Input
                           type="date"
-                          onChange={(e) => handleAddSingleDate(e.target.value)}
+                          value={tempSingleDate}
+                          onChange={(e) => setTempSingleDate(e.target.value)}
+                          min={scheduleConfig?.startDate}
+                          max={scheduleConfig?.endDate}
                           placeholder="Einzelnes Datum"
                         />
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          onClick={handleAddSingleDate}
+                          disabled={!tempSingleDate}
+                          className="bg-gray-900 hover:bg-gray-800 text-white"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Tag hinzufügen
+                        </Button>
                       </div>
                     </div>
                   </div>
