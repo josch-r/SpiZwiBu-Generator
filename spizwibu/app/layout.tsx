@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Station Assignment Scheduler",
+  title: "SpiZwiBu Generator",
   description: "Fair distribution of personnel across station locations throughout a weekly schedule",
 };
 

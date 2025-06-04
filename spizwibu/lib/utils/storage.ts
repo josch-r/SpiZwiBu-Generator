@@ -1,10 +1,12 @@
 // lib/utils/storage.ts
 import { Person, Station, Assignment, ScheduleConfig } from '../types/person';
+import { FairnessMetrics } from '../scheduling/engine';
 
 const PERSONS_STORAGE_KEY = 'spizwibu_persons';
 const STATIONS_STORAGE_KEY = 'spizwibu_stations';
 const ASSIGNMENTS_STORAGE_KEY = 'spizwibu_assignments';
 const SCHEDULE_CONFIG_STORAGE_KEY = 'spizwibu_schedule_config';
+const FAIRNESS_METRICS_STORAGE_KEY = 'spizwibu_fairness_metrics';
 
 // Default stations as specified in requirements
 const DEFAULT_STATIONS: Station[] = [
@@ -141,12 +143,38 @@ export const sessionStorageUtils = {
       };
     }
   },
-
   clearScheduleConfig: (): void => {
     try {
       sessionStorage.removeItem(SCHEDULE_CONFIG_STORAGE_KEY);
     } catch (error) {
       console.error('Failed to clear schedule config from session storage:', error);
+    }
+  },
+
+  // Fairness Metrics utilities
+  saveFairnessMetrics: (metrics: FairnessMetrics): void => {
+    try {
+      sessionStorage.setItem(FAIRNESS_METRICS_STORAGE_KEY, JSON.stringify(metrics));
+    } catch (error) {
+      console.error('Failed to save fairness metrics to session storage:', error);
+    }
+  },
+
+  loadFairnessMetrics: (): FairnessMetrics | null => {
+    try {
+      const stored = sessionStorage.getItem(FAIRNESS_METRICS_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch (error) {
+      console.error('Failed to load fairness metrics from session storage:', error);
+      return null;
+    }
+  },
+
+  clearFairnessMetrics: (): void => {
+    try {
+      sessionStorage.removeItem(FAIRNESS_METRICS_STORAGE_KEY);
+    } catch (error) {
+      console.error('Failed to clear fairness metrics from session storage:', error);
     }
   },
 
@@ -158,7 +186,6 @@ export const sessionStorageUtils = {
       return false;
     }
   },
-
   // Clear all application data
   clearAllData: (): void => {
     try {
@@ -166,6 +193,7 @@ export const sessionStorageUtils = {
       sessionStorage.removeItem(STATIONS_STORAGE_KEY);
       sessionStorage.removeItem(ASSIGNMENTS_STORAGE_KEY);
       sessionStorage.removeItem(SCHEDULE_CONFIG_STORAGE_KEY);
+      sessionStorage.removeItem(FAIRNESS_METRICS_STORAGE_KEY);
     } catch (error) {
       console.error('Failed to clear all data from session storage:', error);
     }

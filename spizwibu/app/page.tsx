@@ -88,7 +88,7 @@ export default function Home() {
         
         {/* Footer */}
         <footer className="mt-16 text-center text-gray-500 dark:text-gray-400 text-sm">
-          <p>Station Assignment Scheduler • Privacy-focused • Session-only storage</p>
+          <p>SpiZwiBu Generator • made by <a className="underline" href="https://joschua-rothenbacher.de/">josch</a> • Session-only storage</p>
         </footer>
       </div>
     </div>

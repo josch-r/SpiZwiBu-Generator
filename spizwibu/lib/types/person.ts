@@ -17,6 +17,7 @@ export interface Assignment {
   timeSlot: 'Morning' | 'Evening';
   stationId: string;
   personId: string;
+  date: string; // ISO date string to distinguish between weeks
 }
 
 export interface ScheduleConfig {

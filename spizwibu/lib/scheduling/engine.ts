@@ -7,6 +7,7 @@ export interface TimeSlot {
   dayIndex: number;
   timeIndex: number;
   date: string; // ISO date string for this specific time slot
+  weekNumber: number; // Track which week this slot belongs to
 }
 
 export interface ScheduleConstraints {
@@ -56,10 +57,13 @@ class SchedulingEngine {
     for (let currentDate = new Date(startDate); currentDate <= endDate; currentDate.setDate(currentDate.getDate() + 1)) {
       // Skip Sundays
       if (currentDate.getDay() === 0) continue;
-      
-      const dayName = getDayName(currentDate);
+        const dayName = getDayName(currentDate);
       const dateString = currentDate.toISOString().split('T')[0];
       const dayIndex = currentDate.getDay() === 1 ? 0 : currentDate.getDay() - 1; // Monday = 0, Tuesday = 1, etc.
+      
+      // Calculate which week this day belongs to (starting from week 0)
+      const daysDiff = Math.floor((currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const weekNumber = Math.floor(daysDiff / 7);
       
       // Add morning shift (unless it's the start date and we're excluding start morning)
       if (!(currentDate.getTime() === startDate.getTime() && !config.includeStartMorning)) {
@@ -68,7 +72,8 @@ class SchedulingEngine {
           time: 'Morning',
           dayIndex,
           timeIndex: 0,
-          date: dateString
+          date: dateString,
+          weekNumber
         });
       }
       
@@ -79,7 +84,8 @@ class SchedulingEngine {
           time: 'Evening',
           dayIndex,
           timeIndex: 1,
-          date: dateString
+          date: dateString,
+          weekNumber
         });
       }
     }
@@ -103,14 +109,13 @@ class SchedulingEngine {
 
   private getStationAssignmentCount(stationId: string): number {
     return this.assignments.filter(a => a.stationId === stationId).length;
-  }
-
-  private isPersonAvailableForSlot(personId: string, timeSlot: TimeSlot): boolean {
-    // Check if person is already assigned to this time slot
+  }  private isPersonAvailableForSlot(personId: string, timeSlot: TimeSlot): boolean {
+    // Check if person is already assigned to this specific date and time
     return !this.assignments.some(a => 
       a.personId === personId && 
       a.dayOfWeek === timeSlot.day && 
-      a.timeSlot === timeSlot.time
+      a.timeSlot === timeSlot.time &&
+      a.date === timeSlot.date
     );
   }
 
@@ -202,39 +207,53 @@ class SchedulingEngine {
         success: false,
         errors
       };
-    }
+    }    // Group time slots by week for better distribution
+    const slotsByWeek = this.timeSlots.reduce((acc, slot) => {
+      const weekKey = slot.weekNumber;
+      if (!acc[weekKey]) acc[weekKey] = [];
+      acc[weekKey].push(slot);
+      return acc;
+    }, {} as Record<number, TimeSlot[]>);
 
-    // Generate assignments for each time slot and station (2 persons per station)
-    for (const timeSlot of this.timeSlots) {
-      for (const station of this.stations) {
-        const persons = this.findBestPersonsForSlot(timeSlot, 2);
-        
-        if (persons.length >= 2) {
-          // Assign both persons to this station
-          persons.forEach(person => {
+    const totalWeeks = Object.keys(slotsByWeek).length;
+
+    // Generate assignments week by week to ensure proper distribution
+    for (const [weekNumber, weekSlots] of Object.entries(slotsByWeek)) {
+      const week = parseInt(weekNumber);
+      
+      // For each week, distribute assignments more evenly
+      for (const timeSlot of weekSlots) {
+        for (const station of this.stations) {
+          const persons = this.findBestPersonsForSlot(timeSlot, 2);
+          
+          if (persons.length >= 2) {            // Assign both persons to this station
+            persons.forEach(person => {
+              this.assignments.push({
+                dayOfWeek: timeSlot.day,
+                timeSlot: timeSlot.time,
+                stationId: station.id,
+                personId: person.id,
+                date: timeSlot.date
+              });
+            });
+          } else if (persons.length === 1) {
+            // Only one person available
             this.assignments.push({
               dayOfWeek: timeSlot.day,
               timeSlot: timeSlot.time,
               stationId: station.id,
-              personId: person.id
+              personId: persons[0].id,
+              date: timeSlot.date
             });
-          });
-        } else if (persons.length === 1) {
-          // Only one person available
-          this.assignments.push({
-            dayOfWeek: timeSlot.day,
-            timeSlot: timeSlot.time,
-            stationId: station.id,
-            personId: persons[0].id
-          });
-          errors.push(
-            `Nur eine Person verfügbar für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
-          );
-        } else {
-          // No persons available
-          errors.push(
-            `Keine verfügbaren Personen für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
-          );
+            errors.push(
+              `Nur eine Person verfügbar für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
+            );
+          } else {
+            // No persons available
+            errors.push(
+              `Keine verfügbaren Personen für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
+            );
+          }
         }
       }
     }

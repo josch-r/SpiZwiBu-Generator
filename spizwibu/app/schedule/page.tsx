@@ -63,11 +63,10 @@ export default function SchedulePage() {
         scheduleConfig
       });
 
-      setScheduleResult(result);
-
-      if (result.success) {
-        // Save assignments to session storage
+      setScheduleResult(result);      if (result.success) {
+        // Save assignments and fairness metrics to session storage
         sessionStorageUtils.saveAssignments(result.assignments);
+        sessionStorageUtils.saveFairnessMetrics(result.fairnessMetrics);
         setShowSuccess(true);
         
         // Navigate to schedule display after a short delay

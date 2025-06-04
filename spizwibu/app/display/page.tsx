@@ -8,16 +8,17 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Person, Station, Assignment } from '@/lib/types/person';
 import { sessionStorageUtils } from '@/lib/utils/storage';
-import SchedulingEngine from '@/lib/scheduling/engine';
-import { AlertCircle, Calendar, Download, RotateCcw, Eye } from 'lucide-react';
+import SchedulingEngine, { FairnessMetrics } from '@/lib/scheduling/engine';
+import { AlertCircle, Calendar, Download, RotateCcw, Eye, BarChart3 } from 'lucide-react';
 
-type ViewMode = 'calendar' | 'person' | 'station';
+type ViewMode = 'calendar' | 'person' | 'station' | 'fairness';
 
 export default function DisplayPage() {
   const router = useRouter();
   const [persons, setPersons] = useState<Person[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [fairnessMetrics, setFairnessMetrics] = useState<FairnessMetrics | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('calendar');
   const [error, setError] = useState<string | null>(null);
 
@@ -25,11 +26,10 @@ export default function DisplayPage() {
     if (!sessionStorageUtils.isSessionStorageAvailable()) {
       setError('Session storage is not available. Please enable it to use this application.');
       return;
-    }
-
-    const loadedPersons = sessionStorageUtils.loadPersons();
+    }    const loadedPersons = sessionStorageUtils.loadPersons();
     const loadedStations = sessionStorageUtils.loadStations();
     const loadedAssignments = sessionStorageUtils.loadAssignments();
+    const loadedFairnessMetrics = sessionStorageUtils.loadFairnessMetrics();
 
     if (loadedPersons.length === 0) {
       setError('Keine Personen gefunden. Bitte gehen Sie zurück zum Import.');
@@ -44,6 +44,7 @@ export default function DisplayPage() {
     setPersons(loadedPersons);
     setStations(loadedStations.filter(s => s.active));
     setAssignments(loadedAssignments);
+    setFairnessMetrics(loadedFairnessMetrics);
   }, []);
 
   const getPersonName = (personId: string): string => {
@@ -57,14 +58,13 @@ export default function DisplayPage() {
   };
 
   const handleExportCSV = () => {
-    try {
-      const csvHeaders = ['Tag', 'Zeit', 'Station', 'Person 1', 'Person 2'];
+    try {      const csvHeaders = ['Datum', 'Tag', 'Zeit', 'Station', 'Person 1', 'Person 2'];
       
-      // Group assignments by day, time, and station
+      // Group assignments by date, time, and station
       const groupedAssignments: Record<string, Assignment[]> = {};
       
       assignments.forEach(assignment => {
-        const key = `${assignment.dayOfWeek}-${assignment.timeSlot}-${assignment.stationId}`;
+        const key = `${assignment.date}-${assignment.timeSlot}-${assignment.stationId}`;
         if (!groupedAssignments[key]) {
           groupedAssignments[key] = [];
         }
@@ -72,17 +72,34 @@ export default function DisplayPage() {
       });
 
       const csvRows = Object.entries(groupedAssignments).map(([key, assignments]) => {
-        const [day, timeSlot, stationId] = key.split('-');
+        const [date, timeSlot, stationId] = key.split('-');
         const person1 = assignments[0] ? getPersonName(assignments[0].personId) : '';
         const person2 = assignments[1] ? getPersonName(assignments[1].personId) : '';
         
+        // Format date for German locale
+        const dateObj = new Date(date);
+        const formattedDate = dateObj.toLocaleDateString('de-DE', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric' 
+        });
+        const dayName = dateObj.toLocaleDateString('de-DE', { weekday: 'long' });
+        
         return [
-          day,
+          formattedDate,
+          dayName,
           timeSlot === 'Morning' ? 'Frühdienst' : 'Spätdienst',
           getStationName(stationId),
           person1,
           person2
         ];
+      })
+      
+      // Sort CSV rows by date
+      .sort((a, b) => {
+        const dateA = new Date(a[0].split('.').reverse().join('-'));
+        const dateB = new Date(b[0].split('.').reverse().join('-'));
+        return dateA.getTime() - dateB.getTime();
       });
 
       const csvContent = [
@@ -111,25 +128,43 @@ export default function DisplayPage() {
       setError('Fehler beim Exportieren: ' + (error instanceof Error ? error.message : 'Unbekannter Fehler'));
     }
   };
-
   const renderCalendarView = () => {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
-    const timeSlots = ['Morning', 'Evening'] as const;
+    // Group assignments by date instead of just day of week
+    const assignmentsByDate = assignments.reduce((acc, assignment) => {
+      const date = assignment.date;
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      acc[date].push(assignment);
+      return acc;
+    }, {} as Record<string, Assignment[]>);
+
+    // Sort dates chronologically
+    const sortedDates = Object.keys(assignmentsByDate).sort();
 
     return (
       <div className="space-y-6">
-        {days.map(day => {
-          const dayAssignments = assignments.filter(a => a.dayOfWeek === day);
+        {sortedDates.map(date => {
+          const dateAssignments = assignmentsByDate[date];
+          const dateObj = new Date(date);
+          const dayName = dateObj.toLocaleDateString('de-DE', { weekday: 'long' });
+          const formattedDate = dateObj.toLocaleDateString('de-DE', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric' 
+          });
           
           return (
-            <Card key={day}>
+            <Card key={date}>
               <CardHeader>
-                <CardTitle className="text-lg">{day}</CardTitle>
+                <CardTitle className="text-lg">
+                  {dayName} - {formattedDate}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {timeSlots.map(timeSlot => {
-                    const slotAssignments = dayAssignments.filter(a => a.timeSlot === timeSlot);
+                  {['Morning', 'Evening'].map(timeSlot => {
+                    const slotAssignments = dateAssignments.filter(a => a.timeSlot === timeSlot);
                     
                     return (
                       <div key={timeSlot} className="border rounded-lg p-4">
@@ -182,7 +217,6 @@ export default function DisplayPage() {
       </div>
     );
   };
-
   const renderPersonView = () => {
     const assignmentsByPerson = SchedulingEngine.getAssignmentsByPerson(assignments);
 
@@ -190,6 +224,14 @@ export default function DisplayPage() {
       <div className="space-y-4">
         {persons.map(person => {
           const personAssignments = assignmentsByPerson[person.id] || [];
+          
+          // Sort assignments by date and time
+          const sortedAssignments = personAssignments.sort((a, b) => {
+            const dateCompare = a.date.localeCompare(b.date);
+            if (dateCompare !== 0) return dateCompare;
+            // If same date, Morning comes before Evening
+            return a.timeSlot === 'Morning' ? -1 : 1;
+          });
           
           return (
             <Card key={person.id}>
@@ -203,15 +245,24 @@ export default function DisplayPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {personAssignments.map((assignment, index) => (
-                    <div key={index} className="border rounded p-3 text-sm">
-                      <div className="font-medium">{assignment.dayOfWeek}</div>
-                      <div className="text-gray-600">
-                        {assignment.timeSlot === 'Morning' ? 'Frühdienst' : 'Spätdienst'}
+                  {sortedAssignments.map((assignment, index) => {
+                    const dateObj = new Date(assignment.date);
+                    const dayName = dateObj.toLocaleDateString('de-DE', { weekday: 'short' });
+                    const formattedDate = dateObj.toLocaleDateString('de-DE', { 
+                      day: '2-digit', 
+                      month: '2-digit' 
+                    });
+                    
+                    return (
+                      <div key={index} className="border rounded p-3 text-sm">
+                        <div className="font-medium">{dayName} {formattedDate}</div>
+                        <div className="text-gray-600">
+                          {assignment.timeSlot === 'Morning' ? 'Frühdienst' : 'Spätdienst'}
+                        </div>
+                        <div className="text-gray-600">{getStationName(assignment.stationId)}</div>
                       </div>
-                      <div className="text-gray-600">{getStationName(assignment.stationId)}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {personAssignments.length === 0 && (
                   <div className="text-gray-400 text-sm">Keine Dienste zugewiesen</div>
@@ -221,18 +272,27 @@ export default function DisplayPage() {
           );
         })}
       </div>
-    );
-  };
-
+    );  };
   const renderStationView = () => {
     const assignmentsByStation = SchedulingEngine.getAssignmentsByStation(assignments);
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
-    const timeSlots = ['Morning', 'Evening'] as const;
 
     return (
       <div className="space-y-4">
         {stations.map(station => {
           const stationAssignments = assignmentsByStation[station.id] || [];
+          
+          // Group station assignments by date
+          const assignmentsByDate = stationAssignments.reduce((acc, assignment) => {
+            const date = assignment.date;
+            if (!acc[date]) {
+              acc[date] = [];
+            }
+            acc[date].push(assignment);
+            return acc;
+          }, {} as Record<string, Assignment[]>);
+
+          // Sort dates chronologically
+          const sortedDates = Object.keys(assignmentsByDate).sort();
           
           return (
             <Card key={station.id}>
@@ -244,39 +304,51 @@ export default function DisplayPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {days.map(day => 
-                    timeSlots.map(timeSlot => {
-                      const slotAssignments = stationAssignments.filter(a => 
-                        a.dayOfWeek === day && a.timeSlot === timeSlot
-                      );
-                      
-                      if (slotAssignments.length === 0) return null;
-                      
-                      return (
-                        <div key={`${day}-${timeSlot}`} className="border rounded p-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="font-medium text-sm">
-                              {day} - {timeSlot === 'Morning' ? 'Frühdienst' : 'Spätdienst'}
-                            </span>
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              slotAssignments.length >= 2 
-                                ? 'bg-green-100 text-green-700' 
-                                : 'bg-red-100 text-red-700'
-                            }`}>
-                              {slotAssignments.length}/2 Personen
-                            </span>
-                          </div>
-                          <div className="space-y-1">
-                            {slotAssignments.map((assignment, index) => (
-                              <div key={index} className="text-sm text-gray-600">
-                                {getPersonName(assignment.personId)}
-                              </div>
-                            ))}
-                          </div>
+                  {sortedDates.map(date => {
+                    const dateAssignments = assignmentsByDate[date];
+                    const dateObj = new Date(date);
+                    const dayName = dateObj.toLocaleDateString('de-DE', { weekday: 'long' });
+                    const formattedDate = dateObj.toLocaleDateString('de-DE', { 
+                      day: '2-digit', 
+                      month: '2-digit', 
+                      year: 'numeric' 
+                    });
+
+                    return (
+                      <div key={date} className="border rounded p-3">
+                        <div className="font-medium text-sm mb-2">
+                          {dayName} - {formattedDate}
                         </div>
-                      );
-                    })
-                  )}
+                        <div className="space-y-2">
+                          {['Morning', 'Evening'].map(timeSlot => {
+                            const slotAssignments = dateAssignments.filter(a => a.timeSlot === timeSlot);
+                            
+                            if (slotAssignments.length === 0) return null;
+                            
+                            return (
+                              <div key={timeSlot} className="flex justify-between items-center">
+                                <span className="text-sm">
+                                  {timeSlot === 'Morning' ? 'Frühdienst' : 'Spätdienst'}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-sm text-gray-600">
+                                    {slotAssignments.map(a => getPersonName(a.personId)).join(', ')}
+                                  </div>
+                                  <span className={`text-xs px-2 py-1 rounded ${
+                                    slotAssignments.length >= 2 
+                                      ? 'bg-green-100 text-green-700' 
+                                      : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {slotAssignments.length}/2
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 {stationAssignments.length === 0 && (
                   <div className="text-gray-400 text-sm">Keine Dienste zugewiesen</div>
@@ -286,6 +358,122 @@ export default function DisplayPage() {
           );
         })}
       </div>
+    );
+  };
+  const renderFairnessView = () => {
+    if (!fairnessMetrics) {
+      return (
+        <div className="text-center py-8">
+          <AlertCircle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+          <p className="text-gray-500">Keine Fairness-Metriken verfügbar</p>
+          <p className="text-gray-400 text-sm mt-2">
+            Die Fairness-Metriken werden nur angezeigt, wenn sie während der Planerstellung gespeichert wurden.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Fairness-Analyse
+          </CardTitle>
+          <CardDescription>
+            Analyse der Planverteilung und Fairness
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="text-center p-4 border rounded">
+              <div className="text-2xl font-bold text-green-600">
+                {Math.round(fairnessMetrics.fairnessScore * 100)}%
+              </div>
+              <div className="text-sm text-gray-600">Fairness Score</div>
+            </div>
+            <div className="text-center p-4 border rounded">
+              <div className="text-2xl font-bold text-blue-600">
+                {fairnessMetrics.minAssignments}
+              </div>
+              <div className="text-sm text-gray-600">Min. Zuweisungen</div>
+            </div>
+            <div className="text-center p-4 border rounded">
+              <div className="text-2xl font-bold text-orange-600">
+                {fairnessMetrics.maxAssignments}
+              </div>
+              <div className="text-sm text-gray-600">Max. Zuweisungen</div>
+            </div>
+            <div className="text-center p-4 border rounded">
+              <div className="text-2xl font-bold text-purple-600">
+                {fairnessMetrics.maxAssignments - fairnessMetrics.minAssignments}
+              </div>
+              <div className="text-sm text-gray-600">Zuweisungs-Spanne</div>
+            </div>
+          </div>
+
+          {/* Person Assignment Distribution */}
+          <div className="mb-6">
+            <h4 className="font-medium mb-3">Verteilung pro Person</h4>
+            <div className="space-y-2">
+              {Object.entries(fairnessMetrics.assignmentsPerPerson)
+                .sort(([,a], [,b]) => b - a)
+                .map(([personId, count]) => {
+                  const person = persons.find(p => p.id === personId);
+                  const percentage = fairnessMetrics.maxAssignments > 0 ? (count / fairnessMetrics.maxAssignments) * 100 : 0;
+                  
+                  return (
+                    <div key={personId} className="flex items-center gap-3">
+                      <div className="w-32 text-sm font-medium truncate">
+                        {person?.name || 'Unbekannt'}
+                      </div>
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <div className="w-8 text-sm text-gray-600 text-right">
+                        {count}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Station Assignment Distribution */}
+          <div>
+            <h4 className="font-medium mb-3">Verteilung pro Station</h4>
+            <div className="space-y-2">
+              {Object.entries(fairnessMetrics.assignmentsPerStation)
+                .sort(([,a], [,b]) => b - a)
+                .map(([stationId, count]) => {
+                  const station = stations.find(s => s.id === stationId);
+                  const maxStationAssignments = Math.max(...Object.values(fairnessMetrics.assignmentsPerStation));
+                  const percentage = maxStationAssignments > 0 ? (count / maxStationAssignments) * 100 : 0;
+                  
+                  return (
+                    <div key={stationId} className="flex items-center gap-3">
+                      <div className="w-32 text-sm font-medium truncate">
+                        {station?.name || 'Unbekannt'}
+                      </div>
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <div className="w-8 text-sm text-gray-600 text-right">
+                        {count}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     );
   };
 
@@ -367,8 +555,7 @@ export default function DisplayPage() {
             >
               <Eye className="w-4 h-4 mr-2" />
               Nach Personen
-            </Button>
-            <Button
+            </Button>            <Button
               variant={viewMode === 'station' ? 'default' : 'outline'}
               onClick={() => setViewMode('station')}
               size="sm"
@@ -377,14 +564,22 @@ export default function DisplayPage() {
               <Eye className="w-4 h-4 mr-2" />
               Nach Stationen
             </Button>
+            <Button
+              variant={viewMode === 'fairness' ? 'default' : 'outline'}
+              onClick={() => setViewMode('fairness')}
+              size="sm"
+              className={viewMode === 'fairness' ? 'bg-gray-900 text-white' : ''}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Fairness-Analyse
+            </Button>
           </div>
         </CardContent>
-      </Card>
-
-      {/* Schedule Display */}
+      </Card>      {/* Schedule Display */}
       {viewMode === 'calendar' && renderCalendarView()}
       {viewMode === 'person' && renderPersonView()}
       {viewMode === 'station' && renderStationView()}
+      {viewMode === 'fairness' && renderFairnessView()}
 
       <Separator className="my-8" />
 

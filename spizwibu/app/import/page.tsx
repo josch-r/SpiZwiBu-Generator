@@ -318,8 +318,8 @@ export default function ImportPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredPersons.map((person) => (
-                      <TableRow key={person.id} className="border-gray-200">
-                        <TableCell className="font-medium">{person.name}</TableCell>
+                      <TableRow key={person.id} className="border-gray-200 pl-4">
+                        <TableCell className="font-medium pl-4">{person.name}</TableCell>
                         <TableCell className="text-center">
                           <Checkbox
                             checked={person.excludeMorningShifts}
