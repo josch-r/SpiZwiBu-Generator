@@ -92,14 +92,32 @@ class SchedulingEngine {
 
     return slots;
   }
-
   private canPersonWorkSlot(person: Person, timeSlot: TimeSlot): boolean {
+    // Check shift type exclusions
     if (timeSlot.time === 'Morning' && person.excludeMorningShifts) {
       return false;
     }
     if (timeSlot.time === 'Evening' && person.excludeEveningShifts) {
       return false;
     }
+    
+    // Check date availability constraints
+    const slotDate = timeSlot.date;
+    
+    // If availableDates is specified, person can only work on those dates
+    if (person.availableDates && person.availableDates.length > 0) {
+      if (!person.availableDates.includes(slotDate)) {
+        return false;
+      }
+    }
+    
+    // If unavailableDates is specified, person cannot work on those dates
+    if (person.unavailableDates && person.unavailableDates.length > 0) {
+      if (person.unavailableDates.includes(slotDate)) {
+        return false;
+      }
+    }
+    
     return true;
   }
 

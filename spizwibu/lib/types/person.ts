@@ -4,6 +4,8 @@ export interface Person {
   name: string;
   excludeMorningShifts: boolean;
   excludeEveningShifts: boolean;
+  availableDates?: string[]; // Array of ISO date strings (YYYY-MM-DD) when person is available
+  unavailableDates?: string[]; // Array of ISO date strings (YYYY-MM-DD) when person is unavailable
 }
 
 export interface Station {

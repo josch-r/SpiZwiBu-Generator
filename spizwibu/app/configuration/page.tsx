@@ -9,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Station, ScheduleConfig } from '@/lib/types/person';
+import { Station, ScheduleConfig, Person } from '@/lib/types/person';
 import { sessionStorageUtils } from '@/lib/utils/storage';
-import { AlertCircle, Plus, Trash2, Settings, Calendar } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Settings, Calendar, Users, CalendarDays } from 'lucide-react';
 
 export default function ConfigurationPage() {
   const router = useRouter();
@@ -20,7 +20,12 @@ export default function ConfigurationPage() {
   const [error, setError] = useState<string | null>(null);
   const [personsCount, setPersonsCount] = useState(0);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(null);
-
+  const [persons, setPersons] = useState<Person[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState<string>('');
+  const [availabilityMode, setAvailabilityMode] = useState<'available' | 'unavailable'>('unavailable');
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [tempStartDate, setTempStartDate] = useState('');
+  const [tempEndDate, setTempEndDate] = useState('');
   useEffect(() => {
     if (!sessionStorageUtils.isSessionStorageAvailable()) {
       setError('Session storage is not available. Please enable it to use this application.');
@@ -31,6 +36,7 @@ export default function ConfigurationPage() {
     setStations(loadedStations);
 
     const loadedPersons = sessionStorageUtils.loadPersons();
+    setPersons(loadedPersons);
     setPersonsCount(loadedPersons.length);
 
     const loadedScheduleConfig = sessionStorageUtils.loadScheduleConfig();
@@ -129,11 +135,127 @@ export default function ConfigurationPage() {
     setScheduleConfig(updatedConfig);
     sessionStorageUtils.saveScheduleConfig(updatedConfig);
   };
-
   const handleResetScheduleConfig = () => {
     sessionStorageUtils.clearScheduleConfig();
     const defaultConfig = sessionStorageUtils.loadScheduleConfig();
     setScheduleConfig(defaultConfig);
+  };
+
+  // Date availability management functions
+  const generateDateRange = (start: string, end: string): string[] => {
+    const dates: string[] = [];
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    
+    for (let currentDate = new Date(startDate); currentDate <= endDate; currentDate.setDate(currentDate.getDate() + 1)) {
+      dates.push(currentDate.toISOString().split('T')[0]);
+    }
+    
+    return dates;
+  };
+
+  const handleAddDateRange = () => {
+    if (!selectedPersonId || !tempStartDate || !tempEndDate) {
+      setError('Bitte wählen Sie eine Person und geben Sie Start- und Enddatum ein.');
+      return;
+    }
+
+    if (new Date(tempStartDate) > new Date(tempEndDate)) {
+      setError('Das Startdatum muss vor dem Enddatum liegen.');
+      return;
+    }
+
+    const dateRange = generateDateRange(tempStartDate, tempEndDate);
+    const newDates = [...selectedDates, ...dateRange];
+    const uniqueDates = [...new Set(newDates)].sort();
+    
+    setSelectedDates(uniqueDates);
+    setTempStartDate('');
+    setTempEndDate('');
+    setError(null);
+  };
+
+  const handleAddSingleDate = (date: string) => {
+    if (!date) return;
+    
+    const newDates = [...selectedDates, date];
+    const uniqueDates = [...new Set(newDates)].sort();
+    setSelectedDates(uniqueDates);
+  };
+
+  const handleRemoveDate = (dateToRemove: string) => {
+    setSelectedDates(selectedDates.filter(date => date !== dateToRemove));
+  };
+
+  const handleSavePersonAvailability = () => {
+    if (!selectedPersonId) {
+      setError('Bitte wählen Sie eine Person aus.');
+      return;
+    }
+
+    const updatedPersons = persons.map(person => {
+      if (person.id === selectedPersonId) {
+        const updatedPerson = { ...person };
+        
+        if (availabilityMode === 'available') {
+          updatedPerson.availableDates = [...selectedDates];
+          // Clear unavailable dates when setting available dates
+          delete updatedPerson.unavailableDates;
+        } else {
+          updatedPerson.unavailableDates = [...selectedDates];
+          // Clear available dates when setting unavailable dates
+          delete updatedPerson.availableDates;
+        }
+        
+        return updatedPerson;
+      }
+      return person;
+    });
+
+    setPersons(updatedPersons);
+    sessionStorageUtils.savePersons(updatedPersons);
+    
+    // Reset form
+    setSelectedDates([]);
+    setSelectedPersonId('');
+    setError(null);
+  };
+
+  const handlePersonSelectionChange = (personId: string) => {
+    setSelectedPersonId(personId);
+    setSelectedDates([]);
+    
+    if (personId) {
+      const person = persons.find(p => p.id === personId);
+      if (person) {
+        if (person.availableDates && person.availableDates.length > 0) {
+          setAvailabilityMode('available');
+          setSelectedDates([...person.availableDates]);
+        } else if (person.unavailableDates && person.unavailableDates.length > 0) {
+          setAvailabilityMode('unavailable');
+          setSelectedDates([...person.unavailableDates]);
+        }
+      }
+    }
+  };
+
+  const handleClearPersonAvailability = () => {
+    if (!selectedPersonId) return;
+
+    const updatedPersons = persons.map(person => {
+      if (person.id === selectedPersonId) {
+        const updatedPerson = { ...person };
+        delete updatedPerson.availableDates;
+        delete updatedPerson.unavailableDates;
+        return updatedPerson;
+      }
+      return person;
+    });
+
+    setPersons(updatedPersons);
+    sessionStorageUtils.savePersons(updatedPersons);
+    setSelectedDates([]);
+    setError(null);
   };
 
   const formatDateForInput = (dateString: string): string => {
@@ -399,9 +521,209 @@ export default function ConfigurationPage() {
                 </Button>
               </div>
             </div>
-          )}
-        </CardContent>
+          )}        </CardContent>
       </Card>
+
+      {/* Person Availability Management */}
+      {persons.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Personenverfügbarkeit
+            </CardTitle>
+            <CardDescription>
+              Verwalten Sie die Verfügbarkeit einzelner Personen für bestimmte Termine.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Person Selection */}
+              <div>
+                <Label htmlFor="person-select">Person auswählen</Label>
+                <select
+                  id="person-select"
+                  value={selectedPersonId}
+                  onChange={(e) => handlePersonSelectionChange(e.target.value)}
+                  className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">-- Person auswählen --</option>
+                  {persons.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedPersonId && (
+                <>
+                  {/* Availability Mode Selection */}
+                  <div>
+                    <Label>Verfügbarkeitsmodus</Label>
+                    <div className="flex gap-4 mt-2">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="available-mode"
+                          name="availability-mode"
+                          value="available"
+                          checked={availabilityMode === 'available'}
+                          onChange={(e) => setAvailabilityMode(e.target.value as 'available' | 'unavailable')}
+                          className="text-gray-900"
+                        />
+                        <Label htmlFor="available-mode" className="text-sm">
+                          Nur an bestimmten Tagen verfügbar
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="unavailable-mode"
+                          name="availability-mode"
+                          value="unavailable"
+                          checked={availabilityMode === 'unavailable'}
+                          onChange={(e) => setAvailabilityMode(e.target.value as 'available' | 'unavailable')}
+                          className="text-gray-900"
+                        />
+                        <Label htmlFor="unavailable-mode" className="text-sm">
+                          An bestimmten Tagen nicht verfügbar
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Date Range Selection */}
+                  <div className="space-y-4">
+                    <Label>Zeitraum hinzufügen</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="temp-start-date" className="text-sm">Von</Label>
+                        <Input
+                          id="temp-start-date"
+                          type="date"
+                          value={tempStartDate}
+                          onChange={(e) => setTempStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="temp-end-date" className="text-sm">Bis</Label>
+                        <Input
+                          id="temp-end-date"
+                          type="date"
+                          value={tempEndDate}
+                          onChange={(e) => setTempEndDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          onClick={handleAddDateRange}
+                          disabled={!tempStartDate || !tempEndDate}
+                          className="bg-gray-900 hover:bg-gray-800 text-white"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Zeitraum hinzufügen
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Single Date Selection */}
+                  <div className="space-y-4">
+                    <Label>Einzelnen Tag hinzufügen</Label>
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <Input
+                          type="date"
+                          onChange={(e) => handleAddSingleDate(e.target.value)}
+                          placeholder="Einzelnes Datum"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Selected Dates Display */}
+                  {selectedDates.length > 0 && (
+                    <div>
+                      <Label className="mb-2 block">
+                        {availabilityMode === 'available' ? 'Verfügbare Tage' : 'Nicht verfügbare Tage'} 
+                        ({selectedDates.length})
+                      </Label>
+                      <div className="max-h-40 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {selectedDates.map((date) => (
+                            <div
+                              key={date}
+                              className="flex items-center justify-between bg-white p-2 rounded border text-sm"
+                            >
+                              <span>{new Date(date).toLocaleDateString('de-DE')}</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRemoveDate(date)}
+                                className="ml-2 h-6 w-6 p-0"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-4 pt-4 border-t">
+                    <Button
+                      onClick={handleSavePersonAvailability}
+                      disabled={selectedDates.length === 0}
+                      className="bg-gray-900 hover:bg-gray-800 text-white"
+                    >
+                      Verfügbarkeit speichern
+                    </Button>
+                    <Button
+                      onClick={handleClearPersonAvailability}
+                      variant="outline"
+                      className="border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      Verfügbarkeit löschen
+                    </Button>
+                  </div>
+
+                  {/* Current Person Status */}
+                  {(() => {
+                    const currentPerson = persons.find(p => p.id === selectedPersonId);
+                    if (!currentPerson) return null;
+                    
+                    const hasAvailable = currentPerson.availableDates && currentPerson.availableDates.length > 0;
+                    const hasUnavailable = currentPerson.unavailableDates && currentPerson.unavailableDates.length > 0;
+                    
+                    if (!hasAvailable && !hasUnavailable) return null;
+                    
+                    return (
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="font-medium text-sm text-blue-900 mb-2">
+                          Aktuelle Verfügbarkeit für {currentPerson.name}:
+                        </div>
+                        {hasAvailable && (
+                          <div className="text-sm text-blue-800">
+                            <strong>Nur verfügbar an:</strong> {currentPerson.availableDates!.length} Tagen
+                          </div>
+                        )}
+                        {hasUnavailable && (
+                          <div className="text-sm text-blue-800">
+                            <strong>Nicht verfügbar an:</strong> {currentPerson.unavailableDates!.length} Tagen
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Separator className="my-6" />
 
