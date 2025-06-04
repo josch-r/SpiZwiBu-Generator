@@ -233,12 +233,12 @@ class SchedulingEngine {
       return acc;
     }, {} as Record<number, TimeSlot[]>);
 
-    const totalWeeks = Object.keys(slotsByWeek).length;
+    // const totalWeeks = Object.keys(slotsByWeek).length;
 
     // Generate assignments week by week to ensure proper distribution
     for (const [weekNumber, weekSlots] of Object.entries(slotsByWeek)) {
-      const week = parseInt(weekNumber);
-      
+      // const week = parseInt(weekNumber);
+      console.log(`Processing week ${weekNumber} with ${weekSlots.length} slots`);
       // For each week, distribute assignments more evenly
       for (const timeSlot of weekSlots) {
         for (const station of this.stations) {
