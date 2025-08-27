@@ -137,7 +137,20 @@ class SchedulingEngine {
     );
   }
 
-  private findBestPersonsForSlot(timeSlot: TimeSlot, count: number = 2): Person[] {
+  private getPersonStationCount(personId: string, stationId: string): number {
+    return this.assignments.filter(a => a.personId === personId && a.stationId === stationId).length;
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  private findBestPersonsForSlot(timeSlot: TimeSlot, stationId: string, count: number = 2): Person[] {
     const availablePersons = this.persons.filter(person => 
       this.canPersonWorkSlot(person, timeSlot) &&
       this.isPersonAvailableForSlot(person.id, timeSlot)
@@ -147,13 +160,46 @@ class SchedulingEngine {
       return [];
     }
 
-    // Sort by assignment count (ascending) to ensure fair distribution
-    availablePersons.sort((a, b) => 
-      this.getPersonAssignmentCount(a.id) - this.getPersonAssignmentCount(b.id)
-    );
+    // Create a scoring system for fair distribution
+    const scoredPersons = availablePersons.map(person => {
+      const totalAssignments = this.getPersonAssignmentCount(person.id);
+      const stationAssignments = this.getPersonStationCount(person.id, stationId);
+      
+      // Lower scores are better (fewer assignments = higher priority)
+      // Prioritize: 1) People with fewer total assignments 2) People with fewer assignments at this station
+      const score = totalAssignments * 10 + stationAssignments * 5;
+      
+      return { person, score };
+    });
 
-    // Return up to 'count' persons (default 2)
-    return availablePersons.slice(0, Math.min(count, availablePersons.length));
+    // Sort by score (ascending) and add randomization for ties
+    scoredPersons.sort((a, b) => {
+      if (a.score === b.score) {
+        // For ties, use randomization to avoid alphabetical bias
+        return Math.random() - 0.5;
+      }
+      return a.score - b.score;
+    });
+
+    // Group by score to handle ties better
+    const lowestScore = scoredPersons[0].score;
+    const bestCandidates = scoredPersons.filter(sp => sp.score === lowestScore);
+    
+    if (bestCandidates.length >= count) {
+      // If we have enough people with the same (best) score, shuffle and pick
+      const shuffledBest = this.shuffleArray(bestCandidates);
+      return shuffledBest.slice(0, count).map(sp => sp.person);
+    } else {
+      // Take all best candidates and fill remaining slots with next best
+      const selected = bestCandidates.map(sp => sp.person);
+      const remaining = scoredPersons.slice(bestCandidates.length);
+      const shuffledRemaining = this.shuffleArray(remaining);
+      
+      return [
+        ...selected,
+        ...shuffledRemaining.slice(0, count - selected.length).map(sp => sp.person)
+      ];
+    }
   }
 
   private calculateFairnessMetrics(): FairnessMetrics {
@@ -175,15 +221,50 @@ class SchedulingEngine {
     });
 
     const assignmentCounts = Object.values(assignmentsPerPerson);
+    
+    // Handle edge case where no assignments exist
+    if (assignmentCounts.length === 0 || assignmentCounts.every(count => count === 0)) {
+      return {
+        assignmentsPerPerson,
+        assignmentsPerStation,
+        minAssignments: 0,
+        maxAssignments: 0,
+        fairnessScore: 1 // No assignments = perfectly fair
+      };
+    }
+
     const minAssignments = Math.min(...assignmentCounts);
     const maxAssignments = Math.max(...assignmentCounts);
 
     // Calculate fairness score (1 = perfectly fair, 0 = very unfair)
     const range = maxAssignments - minAssignments;
-    const totalSlots = this.timeSlots.length * this.stations.length * 2; // 2 persons per station
-    const idealAssignmentsPerPerson = totalSlots / this.persons.length;
-    const idealRange = Math.ceil(idealAssignmentsPerPerson) - Math.floor(idealAssignmentsPerPerson);
-    const fairnessScore = idealRange === 0 ? 1 : Math.max(0, 1 - (range / (idealRange + 2)));
+    
+    // If everyone has the same number of assignments, it's perfectly fair
+    if (range === 0) {
+      return {
+        assignmentsPerPerson,
+        assignmentsPerStation,
+        minAssignments,
+        maxAssignments,
+        fairnessScore: 1
+      };
+    }
+
+    // Calculate total assignments and ideal distribution
+    const totalAssignments = this.assignments.length;
+    const idealAssignmentsPerPerson = totalAssignments / this.persons.length;
+    
+    // Calculate variance from ideal distribution
+    const variance = assignmentCounts.reduce((sum, count) => {
+      const diff = count - idealAssignmentsPerPerson;
+      return sum + (diff * diff);
+    }, 0) / assignmentCounts.length;
+    
+    // Convert variance to fairness score (0-1 scale)
+    // Lower variance = higher fairness score
+    // Use exponential decay to make the score more sensitive
+    const maxReasonableVariance = idealAssignmentsPerPerson; // Reasonable upper bound
+    const fairnessScore = Math.max(0, Math.min(1, Math.exp(-variance / maxReasonableVariance)));
 
     return {
       assignmentsPerPerson,
@@ -225,56 +306,9 @@ class SchedulingEngine {
         success: false,
         errors
       };
-    }    // Group time slots by week for better distribution
-    const slotsByWeek = this.timeSlots.reduce((acc, slot) => {
-      const weekKey = slot.weekNumber;
-      if (!acc[weekKey]) acc[weekKey] = [];
-      acc[weekKey].push(slot);
-      return acc;
-    }, {} as Record<number, TimeSlot[]>);
-
-    // const totalWeeks = Object.keys(slotsByWeek).length;
-
-    // Generate assignments week by week to ensure proper distribution
-    for (const [weekNumber, weekSlots] of Object.entries(slotsByWeek)) {
-      // const week = parseInt(weekNumber);
-      console.log(`Processing week ${weekNumber} with ${weekSlots.length} slots`);
-      // For each week, distribute assignments more evenly
-      for (const timeSlot of weekSlots) {
-        for (const station of this.stations) {
-          const persons = this.findBestPersonsForSlot(timeSlot, 2);
-          
-          if (persons.length >= 2) {            // Assign both persons to this station
-            persons.forEach(person => {
-              this.assignments.push({
-                dayOfWeek: timeSlot.day,
-                timeSlot: timeSlot.time,
-                stationId: station.id,
-                personId: person.id,
-                date: timeSlot.date
-              });
-            });
-          } else if (persons.length === 1) {
-            // Only one person available
-            this.assignments.push({
-              dayOfWeek: timeSlot.day,
-              timeSlot: timeSlot.time,
-              stationId: station.id,
-              personId: persons[0].id,
-              date: timeSlot.date
-            });
-            errors.push(
-              `Nur eine Person verfügbar für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
-            );
-          } else {
-            // No persons available
-            errors.push(
-              `Keine verfügbaren Personen für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
-            );
-          }
-        }
-      }
-    }
+    }    // Generate assignments using improved distribution algorithm
+    const algorithmErrors = this.generateOptimizedAssignments();
+    errors.push(...algorithmErrors);
 
     const fairnessMetrics = this.calculateFairnessMetrics();
 
@@ -284,6 +318,95 @@ class SchedulingEngine {
       success: errors.length === 0,
       errors
     };
+  }
+
+  private generateOptimizedAssignments(): string[] {
+    // Create a more sophisticated assignment algorithm
+    const maxIterations = 3; // Try multiple passes for better distribution
+    const errors: string[] = [];
+    
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      console.log(`Assignment iteration ${iteration + 1}`);
+      
+      // Clear assignments for retry iterations
+      if (iteration > 0) {
+        this.assignments = [];
+      }
+      
+      // Shuffle time slots to avoid systematic bias
+      const shuffledTimeSlots = this.shuffleArray(this.timeSlots);
+      
+      // Group slots by week but process in shuffled order within each week
+      const slotsByWeek = shuffledTimeSlots.reduce((acc, slot) => {
+        const weekKey = slot.weekNumber;
+        if (!acc[weekKey]) acc[weekKey] = [];
+        acc[weekKey].push(slot);
+        return acc;
+      }, {} as Record<number, TimeSlot[]>);
+
+      const currentIterationErrors: string[] = [];
+
+      // Process weeks in order but slots within weeks are already shuffled
+      for (const [weekNumber, weekSlots] of Object.entries(slotsByWeek)) {
+        console.log(`Processing week ${weekNumber} with ${weekSlots.length} slots`);
+        
+        // For each slot, try to assign optimally
+        for (const timeSlot of weekSlots) {
+          // Shuffle stations to ensure fair rotation
+          const shuffledStations = this.shuffleArray(this.stations);
+          
+          for (const station of shuffledStations) {
+            const persons = this.findBestPersonsForSlot(timeSlot, station.id, 2);
+            
+            if (persons.length >= 2) {
+              // Assign both persons to this station
+              persons.forEach(person => {
+                this.assignments.push({
+                  dayOfWeek: timeSlot.day,
+                  timeSlot: timeSlot.time,
+                  stationId: station.id,
+                  personId: person.id,
+                  date: timeSlot.date
+                });
+              });
+            } else if (persons.length === 1) {
+              // Only one person available
+              this.assignments.push({
+                dayOfWeek: timeSlot.day,
+                timeSlot: timeSlot.time,
+                stationId: station.id,
+                personId: persons[0].id,
+                date: timeSlot.date
+              });
+              currentIterationErrors.push(
+                `Nur eine Person verfügbar für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
+              );
+            } else {
+              // No persons available
+              currentIterationErrors.push(
+                `Keine verfügbaren Personen für ${timeSlot.day} ${timeSlot.time} - ${station.name} (2 benötigt)`
+              );
+            }
+          }
+        }
+      }
+      
+      // Check if this iteration produced better results
+      const currentMetrics = this.calculateFairnessMetrics();
+      
+      // Store errors from the best iteration
+      if (iteration === 0 || currentMetrics.fairnessScore > 0.8) {
+        errors.splice(0, errors.length, ...currentIterationErrors);
+      }
+      
+      // If we achieved good fairness or this is the last iteration, stop
+      if (currentMetrics.fairnessScore > 0.8 || iteration === maxIterations - 1) {
+        console.log(`Stopping at iteration ${iteration + 1}, fairness score: ${currentMetrics.fairnessScore}`);
+        break;
+      }
+    }
+    
+    return errors;
   }
 
   // Helper method to get assignments for display
