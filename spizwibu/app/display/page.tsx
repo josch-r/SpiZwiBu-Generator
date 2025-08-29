@@ -58,73 +58,138 @@ export default function DisplayPage() {
   };
 
   const handleExportCSV = () => {
-    try {      const csvHeaders = ['Datum', 'Tag', 'Zeit', 'Station', 'Person 1', 'Person 2'];
+    try {
+      // Validate required data
+      if (!assignments.length) {
+        throw new Error('Keine Zuweisungen zum Exportieren gefunden');
+      }
       
-      // Group assignments by date, time, and station
-      const groupedAssignments: Record<string, Assignment[]> = {};
-      
-      assignments.forEach(assignment => {
-        const key = `${assignment.date}-${assignment.timeSlot}-${assignment.stationId}`;
-        if (!groupedAssignments[key]) {
-          groupedAssignments[key] = [];
+      // Helper function to escape CSV fields
+      const escapeCsvField = (field: string): string => {
+        if (!field) return '';
+        // If field contains semicolon, comma, quote, or newline, wrap in quotes and escape internal quotes
+        if (field.includes(';') || field.includes(',') || field.includes('"') || field.includes('\n')) {
+          return `"${field.replace(/"/g, '""')}"`;
         }
-        groupedAssignments[key].push(assignment);
-      });
-
-      const csvRows = Object.entries(groupedAssignments).map(([key, assignments]) => {
-        const [date, timeSlot, stationId] = key.split('-');
-        const person1 = assignments[0] ? getPersonName(assignments[0].personId) : '';
-        const person2 = assignments[1] ? getPersonName(assignments[1].personId) : '';
-        
-        // Format date for German locale
-        const dateObj = new Date(date);
-        const formattedDate = dateObj.toLocaleDateString('de-DE', { 
-          day: '2-digit', 
-          month: '2-digit', 
-          year: 'numeric' 
-        });
-        const dayName = dateObj.toLocaleDateString('de-DE', { weekday: 'long' });
-        
-        return [
-          formattedDate,
-          dayName,
-          timeSlot === 'Morning' ? 'Frühdienst' : 'Spätdienst',
-          getStationName(stationId),
-          person1,
-          person2
-        ];
-      })
+        return field;
+      };
       
-      // Sort CSV rows by date
-      .sort((a, b) => {
-        const dateA = new Date(a[0].split('.').reverse().join('-'));
-        const dateB = new Date(b[0].split('.').reverse().join('-'));
-        return dateA.getTime() - dateB.getTime();
+      // Get all unique dates and sort them chronologically
+      const uniqueDates = [...new Set(assignments.map(a => a.date))].sort();
+      
+      // Get formatted dates and day names for headers
+      const dateHeaders = uniqueDates.map(date => {
+        const dateObj = new Date(date + 'T12:00:00.000Z');
+        const dayName = new Intl.DateTimeFormat('de-DE', { 
+          weekday: 'short',
+          timeZone: 'UTC'
+        }).format(dateObj);
+        const formattedDate = `${dateObj.getUTCDate().toString().padStart(2, '0')}.${(dateObj.getUTCMonth() + 1).toString().padStart(2, '0')}`;
+        return `${dayName} ${formattedDate}`;
       });
+      
+      // Create CSV headers: Station, Zeit, then each date
+      const csvHeaders = ['Station', 'Zeit', ...dateHeaders];
+      
+      // Create a data structure organized by station and time slot
+      const scheduleMatrix: Record<string, Record<string, string[]>> = {};
+      
+      // Initialize the matrix
+      stations.forEach(station => {
+        scheduleMatrix[station.id] = {};
+        ['Morning', 'Evening'].forEach(timeSlot => {
+          scheduleMatrix[station.id][timeSlot] = new Array(uniqueDates.length).fill('');
+        });
+      });
+      
+      // Fill the matrix with assignments
+      assignments.forEach(assignment => {
+        const dateIndex = uniqueDates.indexOf(assignment.date);
+        if (dateIndex !== -1) {
+          const personName = getPersonName(assignment.personId);
+          const currentValue = scheduleMatrix[assignment.stationId][assignment.timeSlot][dateIndex];
+          
+          // Add person to the list (multiple persons per station/time slot)
+          if (currentValue) {
+            scheduleMatrix[assignment.stationId][assignment.timeSlot][dateIndex] = `${currentValue}, ${personName}`;
+          } else {
+            scheduleMatrix[assignment.stationId][assignment.timeSlot][dateIndex] = personName;
+          }
+        }
+      });
+      
+      // Convert matrix to CSV rows
+      const csvRows: string[][] = [];
+      
+      stations.forEach(station => {
+        const stationName = getStationName(station.id);
+        
+        // Add morning shift row
+        const morningRow = [
+          escapeCsvField(stationName),
+          escapeCsvField('Frühdienst'),
+          ...scheduleMatrix[station.id]['Morning'].map(persons => escapeCsvField(persons || '-'))
+        ];
+        csvRows.push(morningRow);
+        
+        // Add evening shift row
+        const eveningRow = [
+          escapeCsvField(''), // Empty station name for evening row to avoid duplication
+          escapeCsvField('Spätdienst'),
+          ...scheduleMatrix[station.id]['Evening'].map(persons => escapeCsvField(persons || '-'))
+        ];
+        csvRows.push(eveningRow);
+      });
+      
+      // Validate we have data to export
+      if (csvRows.length === 0) {
+        throw new Error('Keine gültigen Daten zum Exportieren gefunden');
+      }
 
+      // Build CSV content with proper line endings
       const csvContent = [
-        csvHeaders.join(';'),
+        csvHeaders.map(header => escapeCsvField(header)).join(';'),
         ...csvRows.map(row => row.join(';'))
-      ].join('\n');
+      ].join('\r\n'); // Use Windows line endings for better Excel compatibility
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // Create blob with UTF-8 BOM for proper German character encoding in Excel
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { 
+        type: 'text/csv;charset=utf-8;' 
+      });
+      
+      // Create download with descriptive filename including date range
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       
+      // Generate filename with current date and date range
+      const today = new Date();
+      const startDate = uniqueDates[0] ? uniqueDates[0].replace(/-/g, '') : '';
+      const endDate = uniqueDates[uniqueDates.length - 1] ? uniqueDates[uniqueDates.length - 1].replace(/-/g, '') : '';
+      const filename = `SpiZwiBu-Plan_${startDate}-${endDate}_${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}.csv`;
+      
       link.setAttribute('href', url);
-      link.setAttribute('download', `SpiZwiBu-Plan_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', filename);
       link.style.visibility = 'hidden';
       
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      
+      // Clean up object URL
+      URL.revokeObjectURL(url);
+
+      // Success logging
+      console.log(`CSV export successful: ${csvRows.length} rows exported with ${uniqueDates.length} days`);
 
       // Clear all data after export as per requirements
       setTimeout(() => {
         sessionStorageUtils.clearAllData();
         router.push('/');
       }, 1000);
+      
     } catch (error) {
+      console.error('Export error:', error);
       setError('Fehler beim Exportieren: ' + (error instanceof Error ? error.message : 'Unbekannter Fehler'));
     }
   };

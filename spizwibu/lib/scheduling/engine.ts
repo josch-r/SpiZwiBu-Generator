@@ -43,6 +43,10 @@ class SchedulingEngine {
     const startDate = new Date(config.startDate);
     const endDate = new Date(config.endDate);
     
+    console.log('=== TIME SLOT GENERATION ===');
+    console.log('Config startDate:', config.startDate, 'endDate:', config.endDate);
+    console.log('Parsed startDate:', startDate, 'endDate:', endDate);
+    
     // Helper function to get day name from date
     const getDayName = (date: Date): 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' => {
       const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -54,10 +58,15 @@ class SchedulingEngine {
     };
 
     // Iterate through each day in the date range
-    for (let currentDate = new Date(startDate); currentDate <= endDate; currentDate.setDate(currentDate.getDate() + 1)) {
+    let currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
       // Skip Sundays
-      if (currentDate.getDay() === 0) continue;
-        const dayName = getDayName(currentDate);
+      if (currentDate.getDay() === 0) {
+        currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+        continue;
+      }
+      
+      const dayName = getDayName(currentDate);
       const dateString = currentDate.toISOString().split('T')[0];
       const dayIndex = currentDate.getDay() === 1 ? 0 : currentDate.getDay() - 1; // Monday = 0, Tuesday = 1, etc.
       
@@ -88,8 +97,14 @@ class SchedulingEngine {
           weekNumber
         });
       }
+      
+      // Move to next day - create new date object to avoid mutation issues
+      currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
     }
 
+    console.log('Generated', slots.length, 'time slots. Date range:', 
+      slots.length > 0 ? `${slots[0].date} to ${slots[slots.length-1].date}` : 'none');
+    
     return slots;
   }
   private canPersonWorkSlot(person: Person, timeSlot: TimeSlot): boolean {

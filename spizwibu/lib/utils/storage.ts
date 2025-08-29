@@ -116,9 +116,19 @@ export const sessionStorageUtils = {
       // Return default config - next Monday to Saturday
       const today = new Date();
       const nextMonday = new Date(today);
-      nextMonday.setDate(today.getDate() + (1 + 7 - today.getDay()) % 7);
+      // Calculate days until next Monday (1-7 days from today)
+      const daysUntilMonday = ((1 - today.getDay() + 7) % 7) || 7; // Ensure at least 1 day forward
+      nextMonday.setDate(today.getDate() + daysUntilMonday);
       const nextSaturday = new Date(nextMonday);
       nextSaturday.setDate(nextMonday.getDate() + 5);
+      
+      console.log('Default schedule config calculation:', {
+        today: today.toISOString().split('T')[0],
+        todayDay: today.getDay(),
+        daysUntilMonday,
+        nextMonday: nextMonday.toISOString().split('T')[0],
+        nextSaturday: nextSaturday.toISOString().split('T')[0]
+      });
       
       return {
         startDate: nextMonday.toISOString().split('T')[0],
@@ -131,7 +141,9 @@ export const sessionStorageUtils = {
       // Return default config
       const today = new Date();
       const nextMonday = new Date(today);
-      nextMonday.setDate(today.getDate() + (1 + 7 - today.getDay()) % 7);
+      // Calculate days until next Monday (1-7 days from today)
+      const daysUntilMonday = ((1 - today.getDay() + 7) % 7) || 7; // Ensure at least 1 day forward
+      nextMonday.setDate(today.getDate() + daysUntilMonday);
       const nextSaturday = new Date(nextMonday);
       nextSaturday.setDate(nextMonday.getDate() + 5);
       
